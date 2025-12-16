@@ -1,0 +1,17 @@
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SK logo">
+  <defs>
+    <radialGradient id="sk-bg" cx="40%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#1d4a86"/>
+      <stop offset="60%" stop-color="#1666c5"/>
+      <stop offset="100%" stop-color="#19a1a8"/>
+    </radialGradient>
+    <linearGradient id="sk-ring" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e8f3ff"/>
+      <stop offset="50%" stop-color="#8ac6ff"/>
+      <stop offset="100%" stop-color="#5adedc"/>
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="58" fill="url(#sk-bg)" stroke="url(#sk-ring)" stroke-width="3"/>
+  <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="2" stroke-dasharray="8 6"/>
+  <text x="50%" y="58%" text-anchor="middle" fill="#f7fbff" stroke="#0a1a33" stroke-width="1" font-size="40" font-family="'Segoe UI', 'Georgia', serif" letter-spacing="2">SK</text>
+</svg>
