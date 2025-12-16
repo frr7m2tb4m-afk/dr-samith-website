@@ -51,16 +51,20 @@ export default function HomeClient({ html }) {
 
     // Reveal animations
     const revealEls = document.querySelectorAll("[data-reveal]");
-    if (!("IntersectionObserver" in window)) {
-      revealEls.forEach((el, idx) => {
-        setTimeout(() => el.classList.add("show"), idx * 90);
+    const showEl = (el, idx = 0) => {
+      requestAnimationFrame(() => {
+        el.classList.add("show");
+        if (idx) el.style.transitionDelay = `${idx * 0.06}s`;
       });
+    };
+    if (!("IntersectionObserver" in window)) {
+      revealEls.forEach((el, idx) => showEl(el, idx));
     } else {
       const observer = new IntersectionObserver(
         (entries) => {
-          entries.forEach((entry) => {
+          entries.forEach((entry, idx) => {
             if (entry.isIntersecting) {
-              const delay = parseFloat(entry.target.dataset.revealDelay || "0");
+              const delay = parseFloat(entry.target.dataset.revealDelay || `${idx * 0.06}`);
               entry.target.style.transitionDelay = `${delay}s`;
               entry.target.classList.add("show");
               observer.unobserve(entry.target);

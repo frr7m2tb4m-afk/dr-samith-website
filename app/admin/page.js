@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import StatusBadge from "../../components/admin/StatusBadge";
 
-const today = new Date();
 const addDays = (d, n) => {
   const copy = new Date(d);
   copy.setDate(copy.getDate() + n);
@@ -13,20 +12,41 @@ const addDays = (d, n) => {
 const formatDate = (d) => d.toISOString().slice(0, 10);
 
 export default function AdminPage() {
+  const [isHydrated, setIsHydrated] = useState(false);
+  const todayStr = useMemo(() => {
+    const now = new Date();
+    return formatDate(now);
+  }, []);
+  const nextFortnightStr = useMemo(() => {
+    const now = new Date();
+    return formatDate(addDays(now, 14));
+  }, []);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [filters, setFilters] = useState({
-    start: formatDate(today),
-    end: formatDate(addDays(today, 14)),
+    start: "",
+    end: "",
     status: "",
     q: "",
   });
   const [stats, setStats] = useState(null);
-  const [blockForm, setBlockForm] = useState({ date: formatDate(today), window: "", scope: "day" });
+  const [blockForm, setBlockForm] = useState({ date: "", window: "", scope: "day" });
   const [blockMessage, setBlockMessage] = useState("");
   const [blocks, setBlocks] = useState([]);
   const [editingBlock, setEditingBlock] = useState(null);
+  const [newBooking, setNewBooking] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    reason: "",
+    date: "",
+    time: "08:00",
+    type: "General",
+    amount: "350",
+  });
+  const [newBookingMessage, setNewBookingMessage] = useState("");
+  const [newBookingSlots, setNewBookingSlots] = useState({ slots: [], loading: false, error: "" });
   const [rescheduleDropdown, setRescheduleDropdown] = useState({
     id: null,
     slots: [],
@@ -39,6 +59,17 @@ export default function AdminPage() {
     const timer = setTimeout(() => setToast({ message: "", type: "info" }), 3000);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    setIsHydrated(true);
+    setFilters((prev) => ({
+      ...prev,
+      start: todayStr,
+      end: nextFortnightStr,
+    }));
+    setBlockForm((prev) => ({ ...prev, date: todayStr }));
+    setNewBooking((prev) => ({ ...prev, date: todayStr }));
+  }, []);
 
   const fetchBookings = async () => {
     setLoading(true);
@@ -79,6 +110,46 @@ export default function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const loadNewBookingSlots = async () => {
+    setNewBookingSlots({ slots: [], loading: true, error: "" });
+    try {
+      const res = await fetch("/api/availability");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to load availability");
+      const bookingsArr = Array.isArray(data.bookings) ? data.bookings : [];
+      const bookedMap = bookingsArr.reduce((acc, b) => {
+        const date = normalizeDateId(b.date || b.booking_date);
+        const time = normalizeTime(b.time || b.booking_time);
+        const status = String(b.status || b.Status || "").toLowerCase();
+        if (!date || !time || status === "cancelled") return acc;
+        acc[date] = acc[date] || new Set();
+        acc[date].add(time);
+        return acc;
+      }, {});
+      const slots = generateSlots(bookedMap, data.blocks || []);
+      setNewBookingSlots({ slots, loading: false, error: "" });
+    } catch (err) {
+      setNewBookingSlots({ slots: [], loading: false, error: err.message || "Failed to load slots" });
+    }
+  };
+
+  useEffect(() => {
+    loadNewBookingSlots();
+  }, []);
+
+  useEffect(() => {
+    if (!newBookingSlots.slots.length) return;
+    const currentDay = newBookingSlots.slots.find((s) => s.id === newBooking.date && s.times.length);
+    const firstAvailable = newBookingSlots.slots.find((s) => s.times.length);
+    if (!currentDay && firstAvailable) {
+      setNewBooking((p) => ({ ...p, date: firstAvailable.id, time: firstAvailable.times[0] || p.time }));
+      return;
+    }
+    if (currentDay && currentDay.times.length && !currentDay.times.includes(newBooking.time)) {
+      setNewBooking((p) => ({ ...p, time: currentDay.times[0] }));
+    }
+  }, [newBookingSlots.slots, newBooking.date, newBooking.time]);
+
   const grouped = useMemo(() => {
     const map = {};
     bookings.forEach((b) => {
@@ -96,10 +167,90 @@ export default function AdminPage() {
     return { total, paid, pending };
   }, [bookings]);
 
+  const normalizeDateId = (val) => {
+    if (val instanceof Date) {
+      return new Date(val.getTime() - val.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    }
+    const match = String(val || "").match(/(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : "";
+  };
+
   const completedBookings = useMemo(
     () => bookings.filter((b) => (b.status || "").toLowerCase() === "completed"),
     [bookings]
   );
+
+  const dateFromId = (id) => (id ? new Date(`${id}T00:00:00`) : null);
+  const startOfToday = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const pastBookings = useMemo(
+    () =>
+      bookings.filter((b) => {
+        const id = normalizeDateId(b.date || b.booking_date);
+        const date = dateFromId(id);
+        return date && date < startOfToday;
+      }),
+    [bookings, startOfToday]
+  );
+
+  const pastCompleted = useMemo(
+    () => pastBookings.filter((b) => (b.status || "").toLowerCase() === "completed"),
+    [pastBookings]
+  );
+
+  const completionRate = useMemo(() => {
+    if (!pastBookings.length) return 0;
+    return Math.round((pastCompleted.length / pastBookings.length) * 100);
+  }, [pastBookings, pastCompleted]);
+
+  const paidRate = useMemo(() => {
+    const total = stats?.bookings?.total ?? counts.total;
+    if (!total) return 0;
+    const paid = stats?.bookings?.paid ?? counts.paid;
+    return Math.round((paid / total) * 100);
+  }, [stats, counts]);
+
+  const slotsPerDay = 12; // 08:00–17:00 with 45 min slots
+  const weekdaysInRange = (days) => {
+    let count = 0;
+    const base = new Date(startOfToday);
+    for (let i = 0; i < days; i++) {
+      const d = new Date(base);
+      d.setDate(base.getDate() + i);
+      const dow = d.getDay();
+      if (dow !== 0 && dow !== 6) count += 1;
+    }
+    return count;
+  };
+
+  const bookingsInNext = (days) =>
+    bookings.filter((b) => {
+      const id = normalizeDateId(b.date || b.booking_date);
+      const date = dateFromId(id);
+      if (!date) return false;
+      const diff = date.getTime() - startOfToday.getTime();
+      return diff >= 0 && diff < days * 86400000;
+    }).length;
+
+  const weekLoad = useMemo(() => {
+    const capacity = weekdaysInRange(7) * slotsPerDay;
+    if (!capacity) return 0;
+    const count = bookingsInNext(7);
+    return Math.min(100, Math.round((count / capacity) * 100));
+  }, [bookings, startOfToday]);
+
+  const capacityBuffer = useMemo(() => {
+    const capacity = weekdaysInRange(14) * slotsPerDay;
+    if (!capacity) return 100;
+    const upcoming = bookingsInNext(14);
+    return Math.max(0, 100 - Math.round((upcoming / capacity) * 100));
+  }, [bookings, startOfToday]);
+
+  const selectedNewBookingDay = newBookingSlots.slots.find((s) => s.id === newBooking.date);
 
   const handleInput = (key) => (e) => setFilters((prev) => ({ ...prev, [key]: e.target.value }));
 
@@ -113,13 +264,6 @@ export default function AdminPage() {
     const hh = String(match[1]).padStart(2, "0");
     const mm = match[2];
     return `${hh}:${mm}`;
-  };
-  const normalizeDateId = (val) => {
-    if (val instanceof Date) {
-      return new Date(val.getTime() - val.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-    }
-    const match = String(val || "").match(/(\d{4}-\d{2}-\d{2})/);
-    return match ? match[1] : "";
   };
   const generateSlots = (bookedMap = {}, blocked = []) => {
     const slots = [];
@@ -202,6 +346,10 @@ export default function AdminPage() {
     }
   };
 
+  if (!isHydrated) {
+    return <div className="admin-shell">Loading…</div>;
+  }
+
   return (
     <div className="admin-shell">
       {toast.message ? <div className={`toast-float ${toast.type === "success" ? "success" : ""}`}>{toast.message}</div> : null}
@@ -218,6 +366,38 @@ export default function AdminPage() {
           {loading ? "Refreshing…" : "Refresh"}
         </button>
       </header>
+
+      <section className="visual-band">
+        <div className="band-copy">
+          <p className="eyebrow">Schedule momentum</p>
+          <h2 className="band-title">A cleaner view of the week ahead</h2>
+          <div className="band-chips">
+            <div className="band-chip">
+              <span>Upcoming 14 days</span>
+              <strong>{bookings.length}</strong>
+            </div>
+            <div className="band-chip">
+              <span>Completed</span>
+              <strong>{completedBookings.length}</strong>
+            </div>
+            <div className="band-chip">
+              <span>Active blocks</span>
+              <strong>{blocks.length}</strong>
+            </div>
+          </div>
+        </div>
+        <div className="band-visual" aria-hidden>
+          <div className="orb primary"></div>
+          <div className="orb secondary"></div>
+          <div className="band-meter">
+            <div className="band-meter-label">Week load</div>
+            <div className="band-meter-bar">
+              <span style={{ width: `${weekLoad}%` }} />
+            </div>
+            <div className="band-meter-sub">{weekLoad || 0}% of this week’s weekday capacity is booked.</div>
+          </div>
+        </div>
+      </section>
 
       <section className="stats two-col">
         <div className="stat-card tall">
@@ -265,6 +445,48 @@ export default function AdminPage() {
       </section>
       {toast.message ? <div className={`alert ${toast.type === "success" ? "success" : ""}`}>{toast.message}</div> : null}
 
+      <section className="insight-grid">
+        <div className="insight-card">
+          <div className="insight-top">
+            <div className="insight-label">Completion rate</div>
+            <div className="pill-soft">Live</div>
+          </div>
+          <div className="insight-value">{completionRate}%</div>
+          <div className="progress">
+            <span style={{ width: `${completionRate}%` }} />
+          </div>
+          <div className="insight-sub">Based on {stats?.bookings?.total ?? counts.total} bookings</div>
+        </div>
+        <div className="insight-card">
+          <div className="insight-top">
+            <div className="insight-label">Paid vs pending</div>
+            <div className="pill-soft ghost">Cashflow</div>
+          </div>
+          <div className="insight-value">{paidRate}%</div>
+          <div className="progress dual">
+            <span className="success" style={{ width: `${paidRate}%` }} />
+            <span className="muted-bar" style={{ width: `${Math.max(0, 100 - paidRate)}%` }} />
+          </div>
+          <div className="insight-sub">
+            Paid: {stats?.bookings?.paid ?? counts.paid} · Pending: {stats?.bookings?.pending ?? counts.pending}
+          </div>
+        </div>
+        <div className="insight-card">
+          <div className="insight-top">
+            <div className="insight-label">Capacity buffer</div>
+            <div className="pill-soft ghost">Next 14 days</div>
+          </div>
+          <div className="insight-value">{capacityBuffer}%</div>
+          <div className="sparkline">
+            {Array.from({ length: 8 }).map((_, idx) => {
+              const height = 35 + (idx * 7) % 30;
+              return <span key={idx} style={{ height: `${height}%` }} />;
+            })}
+          </div>
+          <div className="insight-sub">Room to add priority consults before the next two weeks fill up.</div>
+        </div>
+      </section>
+
       <section className="filters">
         <label>
           Start date
@@ -297,6 +519,20 @@ export default function AdminPage() {
           Apply filters
         </button>
       </section>
+      <div className="status-legend">
+        <div className="legend-item">
+          <span className="dot paid" />
+          Paid confirmed
+        </div>
+        <div className="legend-item">
+          <span className="dot pending" />
+          Pending / to-do
+        </div>
+        <div className="legend-item">
+          <span className="dot blocked" />
+          Blocked times
+        </div>
+      </div>
 
       {process.env.NEXT_PUBLIC_GOOGLE_CALENDAR_EMBED_URL ? (
         <section className="calendar-embed">
@@ -320,7 +556,7 @@ export default function AdminPage() {
           <div className="calendar-title">Today</div>
           <div className="calendar-list">
             {bookings
-              .filter((b) => b.date === formatDate(today) || b.booking_date === formatDate(today))
+              .filter((b) => b.date === todayStr || b.booking_date === todayStr)
               .sort((a, b) => (a.time || a.booking_time || "").localeCompare(b.time || b.booking_time || ""))
               .map((b) => (
                 <div key={b.id} className="calendar-item">
@@ -332,7 +568,7 @@ export default function AdminPage() {
                   </div>
                 </div>
               ))}
-            {!bookings.some((b) => b.date === formatDate(today) || b.booking_date === formatDate(today)) && (
+            {!bookings.some((b) => b.date === todayStr || b.booking_date === todayStr) && (
               <div className="muted">No bookings today.</div>
             )}
           </div>
@@ -594,6 +830,146 @@ export default function AdminPage() {
             </div>
           ))}
           {!blocks.length && <div className="muted">No blocks set.</div>}
+        </div>
+      </section>
+
+      <section className="create-card">
+        <div className="create-header">
+          <div>
+            <div className="block-title">Add a booking (sends email + payment link)</div>
+            <div className="muted">Use this for manual bookings; patient receives confirmation email.</div>
+          </div>
+          <button
+            className="btn secondary small"
+            onClick={() => {
+              setNewBooking({
+                name: "",
+                email: "",
+                phone: "",
+                reason: "",
+                date: todayStr,
+                time: "08:00",
+                type: "General",
+                amount: "350",
+              });
+              setNewBookingMessage("");
+            }}
+          >
+            Reset
+          </button>
+        </div>
+        <div className="create-form">
+          <div className="full create-form-meta">
+            {newBookingSlots.loading ? <div className="pill ghost">Loading availability…</div> : null}
+            {newBookingSlots.error ? <div className="alert error">{newBookingSlots.error}</div> : null}
+            <button className="btn secondary small" type="button" onClick={loadNewBookingSlots}>
+              Refresh availability
+            </button>
+          </div>
+          <label>
+            Name
+            <input value={newBooking.name} onChange={(e) => setNewBooking((p) => ({ ...p, name: e.target.value }))} />
+          </label>
+          <label>
+            Email
+            <input value={newBooking.email} onChange={(e) => setNewBooking((p) => ({ ...p, email: e.target.value }))} />
+          </label>
+          <label>
+            Phone
+            <input value={newBooking.phone} onChange={(e) => setNewBooking((p) => ({ ...p, phone: e.target.value }))} />
+          </label>
+          <label>
+            Type
+            <select value={newBooking.type} onChange={(e) => setNewBooking((p) => ({ ...p, type: e.target.value }))}>
+              <option>General</option>
+              <option>Mental Health</option>
+              <option>Follow-up</option>
+            </select>
+          </label>
+          <label>
+            Amount (R)
+            <input value={newBooking.amount} onChange={(e) => setNewBooking((p) => ({ ...p, amount: e.target.value }))} />
+          </label>
+          <label>
+            Date
+            <select
+              value={newBooking.date}
+              onChange={(e) => setNewBooking((p) => ({ ...p, date: e.target.value }))}
+              disabled={newBookingSlots.loading || !newBookingSlots.slots.length}
+            >
+              {!newBookingSlots.slots.length && <option value="">No available dates</option>}
+              {newBookingSlots.slots.map((day) => (
+                <option key={day.id} value={day.id} disabled={!day.times.length}>
+                  {day.day} · {day.label} ({day.times.length ? `${day.times.length} slots` : "no slots"})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Time
+            <select
+              value={newBooking.time}
+              onChange={(e) => setNewBooking((p) => ({ ...p, time: e.target.value }))}
+              disabled={!selectedNewBookingDay || !selectedNewBookingDay.times.length}
+            >
+              {selectedNewBookingDay?.times?.length ? (
+                selectedNewBookingDay.times.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))
+              ) : (
+                <option value="">No times available</option>
+              )}
+            </select>
+          </label>
+          <label className="full">
+            Reason / notes
+            <textarea
+              value={newBooking.reason}
+              onChange={(e) => setNewBooking((p) => ({ ...p, reason: e.target.value }))}
+              rows={2}
+            />
+          </label>
+          <button
+            className="btn"
+            type="button"
+            onClick={async () => {
+              setNewBookingMessage("");
+              if (!newBooking.name || !newBooking.email || !newBooking.phone || !newBooking.reason || !newBooking.date || !newBooking.time) {
+                setNewBookingMessage("Please fill in name, email, phone, reason, date and time.");
+                return;
+              }
+              try {
+                const res = await fetch("/api/admin/bookings", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    name: newBooking.name,
+                    email: newBooking.email,
+                    phone: newBooking.phone,
+                    reason: newBooking.reason,
+                    date: newBooking.date,
+                    time: newBooking.time,
+                    type_label: newBooking.type,
+                    amount: newBooking.amount,
+                    status: "pending",
+                  }),
+                });
+                const data = await res.json();
+                if (!res.ok || !data?.success) throw new Error(data?.message || "Failed to add booking");
+                setToast({ message: "Booking added and email sent", type: "success" });
+                setNewBookingMessage(data.paymentLink ? `Payment link: ${data.paymentLink}` : "Booking created");
+                fetchBookings();
+              } catch (err) {
+                setNewBookingMessage(err.message || "Failed to add booking");
+                setToast({ message: err.message || "Failed to add booking", type: "error" });
+              }
+            }}
+          >
+            Add booking
+          </button>
+          {newBookingMessage ? <div className="alert">{newBookingMessage}</div> : null}
         </div>
       </section>
 

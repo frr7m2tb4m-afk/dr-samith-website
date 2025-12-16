@@ -162,18 +162,19 @@ export async function POST(req) {
     try {
       emailResult = await sendEmail({
         to: email,
-        subject: "Your telehealth booking is confirmed",
+        subject: "Online Appointment Confirmed – Dr Samith Kalyan",
         html: `
-          <p>Hi ${name},</p>
-          <p>Your booking is confirmed.</p>
-          <ul>
-            <li>Date: ${date}</li>
-            <li>Time: ${time}</li>
-            <li>Type: ${typeLabel}</li>
-            <li>Video: <a href="${hangoutLink}">${hangoutLink}</a></li>
-          </ul>
-          <p>Notes: ${reason}</p>
-          <p>— Dr Samith Kalyan</p>
+          <p>Dear ${name},</p>
+          <p>Thank you for your booking. Your online consultation with Dr Samith Kalyan has been successfully confirmed.</p>
+          <p><strong>Appointment details:</strong><br/>
+          🗓 Date: ${date}<br/>
+          ⏰ Time: ${time}<br/>
+          💻 Consultation type: ${typeLabel || "Consultation"}</p>
+          <p><strong>Consultation link:</strong><br/>
+          👉 <a href="${hangoutLink}">${hangoutLink}</a></p>
+          <p>Please join the consultation 5 minutes before your scheduled time. Ensure you have a stable internet connection and are in a quiet, private space.</p>
+          <p>If you experience any difficulties or need to make changes, please contact us as soon as possible.</p>
+          <p>Kind regards,<br/>Dr Samith Kalyan</p>
         `,
       });
     } catch (err) {

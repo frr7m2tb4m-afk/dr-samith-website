@@ -73,23 +73,25 @@ async function updateCalendarEvent({ eventId, date, time, summary, description }
   return { link, id: res.data.id };
 }
 
-async function sendUpdateEmail({ to, name, date, time, type }) {
+async function sendUpdateEmail({ to, name, date, time, type, link }) {
   if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM || !to) return;
   const resend = new Resend(process.env.RESEND_API_KEY);
   await resend.emails.send({
     from: process.env.EMAIL_FROM,
     to,
-    subject: "Updated booking details",
+    subject: "Online Appointment Updated – Dr Samith Kalyan",
     html: `
-      <p>Hi ${name || ""},</p>
-      <p>Your booking has been updated:</p>
-      <ul>
-        <li>Date: ${date}</li>
-        <li>Time: ${time}</li>
-        <li>Type: ${type || "Consult"}</li>
-      </ul>
-      <p>If this time no longer works, please reply to adjust.</p>
-      <p>— Dr Samith Kalyan</p>
+      <p>Dear ${name || ""},</p>
+      <p>Your online consultation with Dr Samith Kalyan has been successfully updated.</p>
+      <p><strong>Updated appointment details:</strong><br/>
+      🗓 Date: ${date}<br/>
+      ⏰ Time: ${time}<br/>
+      💻 Consultation type: ${type || "Consultation"}</p>
+      <p><strong>Updated consultation link:</strong><br/>
+      👉 <a href="${link || "#"}">${link || "Google Meet link"}</a></p>
+      <p>Please join the consultation 5 minutes before your scheduled time.</p>
+      <p>If this change was not intended or you need further assistance, please contact us.</p>
+      <p>Kind regards,<br/>Dr Samith Kalyan</p>
     `,
   });
 }
@@ -166,6 +168,7 @@ export async function PATCH(req, { params }) {
           date: updated.booking_date || updated.date,
           time: updated.booking_time || updated.time,
           type: updated.type_label,
+          link: updated.video_link,
         });
       }
     }

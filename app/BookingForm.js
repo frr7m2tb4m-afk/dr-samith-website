@@ -52,7 +52,7 @@ const generateBaseDates = (days = 21) => {
   return res;
 };
 
-const useAvailability = () => {
+const useAvailability = (daysRange = 21) => {
   const [slots, setSlots] = useState([]);
   const [status, setStatus] = useState("idle");
 
@@ -117,7 +117,7 @@ const useAvailability = () => {
             return timeStr >= normalizeTime(start) && timeStr <= normalizeTime(end);
           });
 
-        const baseDates = generateBaseDates();
+        const baseDates = generateBaseDates(daysRange);
         const allSlots = baseDates.map((date) => {
           const dateId = normalizeDateId(date);
           const dayName = date.toLocaleDateString("en-ZA", { weekday: "short" });
@@ -157,13 +157,14 @@ const useAvailability = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [daysRange]);
 
   return { slots, status };
 };
 
 export default function BookingForm() {
-  const { slots, status } = useAvailability();
+  const [daysWindow, setDaysWindow] = useState(21);
+  const { slots, status } = useAvailability(daysWindow);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
   const timeGridRef = useRef(null);
@@ -203,7 +204,7 @@ export default function BookingForm() {
     if (typeof window === "undefined") return;
     requestAnimationFrame(() => {
       if (timeGridRef.current) {
-        timeGridRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+        timeGridRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
       }
     });
   };
@@ -316,6 +317,18 @@ export default function BookingForm() {
           </div>
 
           <div className="dates-times-divider" aria-hidden="true" />
+
+          <div className="date-actions">
+            <button
+              type="button"
+              className="pill ghost"
+              onClick={() => setDaysWindow((prev) => Math.min(90, prev + 14))}
+              disabled={daysWindow >= 90}
+            >
+              Show more dates
+            </button>
+            <span className="muted small">Currently showing the next {daysWindow} days (weekdays only).</span>
+          </div>
 
           <div className="time-grid" role="listbox" aria-label="Choose a time" ref={timeGridRef}>
             {currentDay?.times?.length ? (
