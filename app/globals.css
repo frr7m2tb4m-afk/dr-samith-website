@@ -208,6 +208,48 @@
       border-radius: 999px;
     }
 
+    /* Enquiry tab */
+    .enquiry-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.7rem 1rem;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 0.9rem;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      transition: transform 0.18s ease, box-shadow 0.22s ease, filter 0.18s ease;
+      text-decoration: none;
+      text-align: center;
+      margin: 1rem auto 0;
+      width: 100%;
+      justify-content: center;
+      max-width: 820px;
+    }
+
+    .enquiry-tab:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 16px 34px rgba(15, 23, 42, 0.22);
+      filter: brightness(1.02);
+    }
+
+    .enquiry-tab:active {
+      transform: translateY(0);
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
+    }
+
+    .enquiry-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: #34d399;
+      box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.25);
+      flex-shrink: 0;
+    }
+
     /* Hero */
 
     .hero {
